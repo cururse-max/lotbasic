@@ -100,6 +100,11 @@
         }
         .pixel.active { background-color: #ffffff !important; box-shadow: 0 0 3px #ffffff; }
 
+        /* 🔴 [복구됨] 배터리 잔량 4등분 구분 점선 (7, 15, 23번째 행 아래) */
+        .pixel[data-y="7"], .pixel[data-y="15"], .pixel[data-y="23"] {
+            border-bottom: 1.5px dashed #ff9800 !important;
+        }
+
         /* 버튼 스타일 */
         .editor-tools { display: flex; gap: 6px; width: 100%; margin-top: 6px; }
         .btn {
