@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SmartRing Unified Controller</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 15px;
+        }
+        .container {
+            width: 100%;
+            max-width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .card {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            width: 100%;
+        }
+        h2 { margin-top: 0; font-size: 17px; color: #ffffff; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        
+        /* 헤더 시계 및 상태 표시 */
+        .status-box {
+            font-size: 13px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #2a2a2a;
+            color: #aaa;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .status-box.connected { background: #14532d; color: #4ade80; }
+        .clock { font-size: 26px; font-weight: bold; color: #00e5ff; text-align: center; margin: 5px 0 10px 0; }
+        
+        /* Input & Form Style */
+        label { font-size: 12px; font-weight: bold; color: #94a3b8; display: block; margin-bottom: 4px; }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #444;
+            background-color: #111;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        input:focus, textarea:focus { border-color: #0066cc; outline: none; }
+        textarea { height: 60px; resize: none; }
+        .hint { font-size: 11px; color: #666; margin-top: -6px; margin-bottom: 8px; }
+
+        /* 도트 캔버스 */
+        .canvas-viewport {
+            width: 280px;
+            height: 280px;
+            background: #111;
+            border: 2px solid #444;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 10px auto;
+            position: relative;
+            touch-action: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .dot-canvas {
+            display: grid;
+            grid-template-columns: repeat(32, 1fr);
+            grid-template-rows: repeat(32, 1fr);
+            width: 256px;
+            height: 256px;
+            background-color: #000;
+            transform-origin: center center;
+            will-change: transform;
+        }
+        .pixel {
+            border: 0.5px solid #1a1a1a;
+            background-color: #050505;
+            width: 100%; height: 100%;
+        }
+        .pixel.active { background-color: #ffffff !important; box-shadow: 0 0 3px #ffffff; }
+
+        /* 버튼 스타일 */
+        .editor-tools { display: flex; gap: 6px; width: 100%; margin-top: 6px; }
+        .btn {
+            flex: 1;
+            padding: 10px 0;
+            font-size: 12px;
+            font-weight: bold;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-action { width: 100%; margin-top: 8px; padding: 12px 0; font-size: 14px; }
+        .btn-primary { background: #0066cc; border-color: #0088ff; }
+        .btn-success { background: #28a745; border-color: #34ce57; }
+        .btn-danger { background: #dc3545; border-color: #f8d7da; }
+        .btn-save { background: #334155; border-color: #475569; }
+        .btn-disabled { background: #333; color: #666; border-color: #444; cursor: not-allowed; }
+        .btn.active-mode { background: #0066cc; border-color: #0088ff; }
+
+        .info-bar {
+            margin-top: 6px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #00ff66;
+            font-family: monospace;
+        }
+
+        .log-box {
+            background-color: #000;
+            color: #00ff66;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 8px;
+            height: 100px;
+            overflow-y: auto;
+            font-size: 11px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- 1. BLE 연결 카드 -->
+    <div class="card">
+        <h2>📡 스마트링 연결 설정</h2>
+        <div id="status" class="status-box">상태: 연결 안 됨</div>
+        <button id="btnConnect" class="btn btn-action btn-primary" onclick="connectBLE()">스마트링 연결하기</button>
+        <button id="btnDisconnect" class="btn btn-action btn-danger" onclick="disconnectBLE()" style="display:none;">연결 해제</button>
+    </div>
+
+    <!-- 2. SOS 설정 카드 -->
+    <div class="card">
+        <h2>🚨 SOS 비상 설정</h2>
+        <label for="phone">비상 연락처 (전화번호)</label>
+        <input type="tel" id="phone" placeholder="01012345678">
+
+        <label for="message">위급 메시지 내용</label>
+        <textarea id="message" placeholder="위급 상황 시 발송할 메시지를 입력하세요."></textarea>
+
+        <label for="webhookUrl">MacroDroid Webhook URL</label>
+        <input type="url" id="webhookUrl" placeholder="https://trigger.macrodroid.com/...">
+        <div class="hint">MacroDroid에서 생성된 Webhook URL을 입력하세요.</div>
+
+        <button class="btn btn-save" onclick="saveSettings()">💾 SOS 설정 저장</button>
+    </div>
+
+    <!-- 3. 시계 및 도트 이미지 전송 카드 -->
+    <div class="card">
+        <h2>⏰ 시계 & 🎨 도트 에디터</h2>
+        <div class="clock" id="phoneClock">00:00:00</div>
+
+        <div class="canvas-viewport" id="viewport">
+            <div id="dotCanvas" class="dot-canvas"></div>
+        </div>
+        
+        <div class="editor-tools">
+            <button id="modeBtn" class="btn" onclick="toggleMode()">✏️ 펜 모드</button>
+            <button class="btn" onclick="resetZoom()">🔍 줌 리셋</button>
+            <button class="btn" onclick="clearCanvas()">🗑️ 전체 지우기</button>
+        </div>
+
+        <div class="info-bar">
+            <span id="zoomLevel">배율: 1.0x</span>
+            <span id="pixelCount">도트: 0 / 1024</span>
+        </div>
+
+        <button id="syncBtn" class="btn btn-action btn-disabled" onclick="syncData()" disabled>시간 및 커스텀 도트 전송</button>
+    </div>
+
+    <!-- 4. 실시간 로그 -->
+    <div class="card">
+        <h2>📜 시스템 로그</h2>
+        <div id="log" class="log-box">> 대기 중...<br></div>
+    </div>
+
+</div>
+
+<script>
+    // UUID 설정 (ESP32-C3 동일)
+    const SERVICE_UUID           = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const CHARACTERISTIC_UUID_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // 시간/도트 쓰기
+    const CHARACTERISTIC_UUID_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // SOS 읽기 (Notify)
+
+    let bleDevice = null;
+    let rxCharacteristic = null;
+    let txCharacteristic = null;
+
+    let dotMatrix = Array(32).fill().map(() => Array(32).fill(0));
+    let isDrawing = false, isEraseMode = false;
+    let scale = 1, pointX = 0, pointY = 0, startDist = 0;
+    let isPinching = false, startTouchX = 0, startTouchY = 0;
+
+    const canvas = document.getElementById('dotCanvas');
+    const viewport = document.getElementById('viewport');
+
+    window.onload = function() {
+        if (localStorage.getItem("sos_phone")) document.getElementById("phone").value = localStorage.getItem("sos_phone");
+        if (localStorage.getItem("sos_message")) {
+            document.getElementById("message").value = localStorage.getItem("sos_message");
+        } else {
+            document.getElementById("message").value = "나 지금 위급 상황이야! 위치 확인하고 도와줘!";
+        }
+        if (localStorage.getItem("sos_webhook")) document.getElementById("webhookUrl").value = localStorage.getItem("sos_webhook");
+        
+        buildCanvas();
+        log("기존 저장된 설정을 불러왔습니다.");
+    };
+
+    function updateClock() {
+        const now = new Date();
+        const hrs = String(now.getHours()).padStart(2, '0');
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        const secs = String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('phoneClock').innerText = `${hrs}:${mins}:${secs}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function saveSettings() {
+        localStorage.setItem("sos_phone", document.getElementById("phone").value.trim());
+        localStorage.setItem("sos_message", document.getElementById("message").value.trim());
+        localStorage.setItem("sos_webhook", document.getElementById("webhookUrl").value.trim());
+        alert("✅ SOS 설정이 저장되었습니다!");
+        log("💾 SOS 설정 데이터 저장 완료");
+    }
+
+    function log(msg) {
+        const logDiv = document.getElementById("log");
+        const time = new Date().toLocaleTimeString();
+        logDiv.innerHTML += `[${time}] ${msg}<br>`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function updateStatus(text, isConnected) {
+        const statusDiv = document.getElementById("status");
+        statusDiv.innerText = `상태: ${text}`;
+        if (isConnected) statusDiv.classList.add("connected");
+        else statusDiv.classList.remove("connected");
+
+        document.getElementById("btnConnect").style.display = isConnected ? "none" : "block";
+        document.getElementById("btnDisconnect").style.display = isConnected ? "block" : "none";
+        
+        const syncBtn = document.getElementById('syncBtn');
+        syncBtn.disabled = !isConnected;
+        syncBtn.className = isConnected ? "btn btn-action btn-success" : "btn btn-action btn-disabled";
+    }
+
+    // BLE 통합 연결 (RX, TX 한 번에 설정)
+    async function connectBLE() {
+        try {
+            log("스마트링 검색 중...");
+            bleDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ name: 'SmartRing_SOS_Test' }],
+                optionalServices: [SERVICE_UUID]
+            });
+
+            bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+            log("GATT 서버 연결 중...");
+            const server = await bleDevice.gatt.connect();
+
+            log("서비스 탐색 중...");
+            const service = await server.getPrimaryService(SERVICE_UUID);
+
+            log("특성(RX/TX) 탐색 중...");
+            rxCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_RX);
+            txCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TX);
+
+            // SOS 신호 알림(Notification) 시작
+            await txCharacteristic.startNotifications();
+            txCharacteristic.addEventListener('characteristicvaluechanged', handleSosSignal);
+
+            updateStatus("스마트링 연결 완료!", true);
+            log("✅ 연결 성공! 시계/도트 전송 및 SOS 대기 중");
+
+        } catch (error) {
+            log(`❌ 연결 실패: ${error.message}`);
+            updateStatus("연결 실패", false);
+        }
+    }
+
+    function disconnectBLE() {
+        if (bleDevice && bleDevice.gatt.connected) {
+            bleDevice.gatt.disconnect();
+        }
+    }
+
+    function onDisconnected() {
+        updateStatus("연결 해제됨", false);
+        log("⚠️ 스마트링 연결이 끊어졌습니다.");
+    }
+
+    // ESP32 -> 웹 (SOS 발생 감지)
+    function handleSosSignal(event) {
+        const decoder = new TextDecoder('utf-8');
+        const value = decoder.decode(event.target.value);
+
+        if (value.trim() === "SOS") {
+            log("🚨 [SOS 이벤트] 스마트링 더블 클릭 감지!");
+            triggerMacroDroid();
+        }
+    }
+
+    // MacroDroid Webhook 호출
+    function triggerMacroDroid() {
+        const phone = document.getElementById("phone").value.trim();
+        const message = document.getElementById("message").value.trim();
+        const webhookUrl = document.getElementById("webhookUrl").value.trim();
+
+        if (!webhookUrl) {
+            alert("MacroDroid Webhook URL을 입력해주세요!");
+            log("❌ 전송 실패: Webhook URL 미입력");
+            return;
+        }
+
+        const targetUrl = `${webhookUrl}?sos_phone=${encodeURIComponent(phone)}&sos_message=${encodeURIComponent(message)}`;
+        log("🚀 MacroDroid Webhook 호출 시작...");
+
+        fetch(targetUrl, { mode: 'no-cors' })
+            .then(() => log("✅ MacroDroid 전송 완료! (GPS 측정 및 SMS 발송 시작)"))
+            .catch((err) => log(`❌ MacroDroid 호출 실패: ${err}`));
+    }
+
+    // 도트 캔버스 그리기 관련 함수들
+    function buildCanvas() {
+        canvas.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        for (let y = 0; y < 32; y++) {
+            for (let x = 0; x < 32; x++) {
+                const pixel = document.createElement('div');
+                pixel.className = 'pixel';
+                pixel.dataset.x = x;
+                pixel.dataset.y = y;
+                fragment.appendChild(pixel);
+            }
+        }
+        canvas.appendChild(fragment);
+
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; drawSingle(e.target); });
+        window.addEventListener('mouseup', () => { isDrawing = false; });
+        canvas.addEventListener('mousemove', (e) => { if (isDrawing) drawSingle(e.target); });
+
+        viewport.addEventListener('touchstart', handleTouchStart, { passive: false });
+        viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
+        viewport.addEventListener('touchend', handleTouchEnd);
+    }
+
+    function handleTouchStart(e) {
+        if (e.touches.length === 1) {
+            isPinching = false; isDrawing = true;
+            drawSingle(document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY));
+        } else if (e.touches.length === 2) {
+            isDrawing = false; isPinching = true;
+            startDist = getDistance(e.touches);
+            startTouchX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - pointX;
+            startTouchY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - pointY;
+        }
+    }
+
+    function handleTouchMove(e) {
+        e.preventDefault();
+        if (isDrawing && e.touches.length === 1) {
+            drawSingle(document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY));
+        } else if (isPinching && e.touches.length === 2) {
+            const newDist = getDistance(e.touches);
+            scale = Math.min(Math.max(1, scale * (newDist / startDist)), 4.5);
+            startDist = newDist;
+            pointX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - startTouchX;
+            pointY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - startTouchY;
+            updateTransform();
+        }
+    }
+
+    function handleTouchEnd(e) {
+        if (e.touches.length < 2) isPinching = false;
+        if (e.touches.length === 0) isDrawing = false;
+    }
+
+    function getDistance(touches) {
+        return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    }
+
+    function updateTransform() {
+        if (scale === 1) { pointX = 0; pointY = 0; }
+        canvas.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+        document.getElementById('zoomLevel').innerText = `배율: ${scale.toFixed(1)}x`;
+    }
+
+    function resetZoom() { scale = 1; pointX = 0; pointY = 0; updateTransform(); }
+
+    function drawSingle(target) {
+        if (!target || !target.classList.contains('pixel')) return;
+        const x = parseInt(target.dataset.x, 10);
+        const y = parseInt(target.dataset.y, 10);
+        const val = isEraseMode ? 0 : 1;
+        if (dotMatrix[y][x] !== val) {
+            dotMatrix[y][x] = val;
+            if (val === 1) target.classList.add('active');
+            else target.classList.remove('active');
+            updateCount();
+        }
+    }
+
+    function toggleMode() {
+        isEraseMode = !isEraseMode;
+        const btn = document.getElementById('modeBtn');
+        btn.innerText = isEraseMode ? "🧹 지우개" : "✏️ 펜 모드";
+        if (isEraseMode) btn.classList.add('active-mode');
+        else btn.classList.remove('active-mode');
+    }
+
+    function clearCanvas() {
+        dotMatrix = Array(32).fill().map(() => Array(32).fill(0));
+        document.querySelectorAll('.pixel').forEach(p => p.classList.remove('active'));
+        updateCount();
+    }
+
+    function updateCount() {
+        let activeCount = 0;
+        for (let y = 0; y < 32; y++) {
+            for (let x = 0; x < 32; x++) if (dotMatrix[y][x] === 1) activeCount++;
+        }
+        document.getElementById('pixelCount').innerText = `도트: ${activeCount} / 1024`;
+    }
+
+    function get32x32BitmapBytes() {
+        let bytes = new Uint8Array(128);
+        for (let y = 0; y < 32; y++) {
+            for (let x = 0; x < 32; x++) {
+                if (dotMatrix[y][x] === 1) {
+                    let byteIdx = (y * 4) + Math.floor(x / 8);
+                    let bitIdx = 7 - (x % 8);
+                    bytes[byteIdx] |= (1 << bitIdx);
+                }
+            }
+        }
+        return bytes;
+    }
+
+    // 시간 & 비트맵 데이터 분할 전송 (RX 전송)
+    async function syncData() {
+        if (!rxCharacteristic) return;
+        try {
+            const now = new Date();
+            const timeStr = `T:${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            await rxCharacteristic.writeValue((new TextEncoder()).encode(timeStr));
+            log("⏰ 시간 전송 완료!");
+
+            const bitmap = get32x32BitmapBytes();
+            for (let i = 0; i < 128; i += 32) {
+                const chunk = bitmap.slice(i, i + 32);
+                const packet = new Uint8Array(2 + chunk.length);
+                packet[0] = 66; // ASCII 'B'
+                packet[1] = i;  // Chunk Offset
+                packet.set(chunk, 2);
+                
+                await rxCharacteristic.writeValue(packet);
+                await new Promise(r => setTimeout(r, 60));
+            }
+            log("🎨 도트 데이터 전송 완료!");
+        } catch (error) {
+            log("❌ 전송 오류: " + error.message);
+        }
+    }
+</script>
+
+</body>
+</html>
