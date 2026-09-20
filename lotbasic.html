@@ -282,7 +282,7 @@
         try {
             log("스마트링 검색 중...");
             bleDevice = await navigator.bluetooth.requestDevice({
-                filters: [{ name: 'SmartRing_SOS_Test' }],
+                filters: [{ name: 'SmartRing_Clock' }],
                 optionalServices: [SERVICE_UUID]
             });
 
